@@ -13,6 +13,28 @@ const JSON_SECRET_FIELD_TEXT_RE =
 const ESCAPED_JSON_SECRET_FIELD_TEXT_RE =
   /((?:\\")?(?:api[-_]?key|access[-_]?token|auth(?:_?token)?|authorization|bearer|secret|passwd|password|credential|jwt|private[-_]?key|cookie|connectionstring)(?:\\")?\s*:\s*(?:\\"))[^\\\r\n]+((?:\\"))/gi;
 export const REDACTED_EVENT_VALUE = "***REDACTED***";
+// `secret: status` is common prose, so colon-form redaction is deliberately
+// narrower than equals-form redaction. Uppercase environment-style names are
+// always treated as secret assignments; other colon forms need an opaque
+// credential shape before they are redacted.
+const TEXT_ENV_SECRET_ASSIGNMENT_RE =
+  /(\b[A-Z][A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|AUTHORIZATION|JWT)[A-Z0-9_]*\s*[:=]\s*["']?)[^\s"'`]+/g;
+const TEXT_NAMED_SECRET_EQUALS_RE =
+  /((?:api[-_]?key|access[-_]?token|auth(?:_?token)?|authorization|bearer|secret|passwd|password|credential|jwt|private[-_]?key|cookie|connectionstring)\s*=\s*["']?)[^\s"'`]+/gi;
+const TEXT_CLEAR_SECRET_COLON_RE =
+  /((?:api[-_]?key|access[-_]?token|auth(?:_?token)?|authorization|bearer|passwd|password|credential|jwt|private[-_]?key|cookie|connectionstring)\s*:\s*["']?)[^\s"'`]+/gi;
+const TEXT_AMBIGUOUS_SECRET_COLON_RE =
+  /(secret\s*:\s*["']?)(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]{8,})?|[A-Za-z0-9+/=_-]{32,})/gi;
+// A bare `Bearer` prefix is common in copied headers, but ordinary prose such
+// as "bearer tokens" must stay readable. Redact only a single opaque token:
+// a known provider shape, JWT, or 24+ character URL-safe/base64-like value.
+const TEXT_BARE_BEARER_CREDENTIAL_RE =
+  /(\bbearer\s+)(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]{8,})?|[A-Za-z0-9+/=_-]{24,})(?=$|[^A-Za-z0-9+/=_-])/gi;
+// URL userinfo is treated as sensitive even when it has no password. A token
+// can be supplied as the username component (`https://token@example.test`).
+// Normal URLs, ports, and URLs without an `@` remain untouched.
+const TEXT_URL_EMBEDDED_CREDENTIAL_RE =
+  /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/?#@]+@/gi;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -94,10 +116,13 @@ export function redactEventPayload(payload: Record<string, unknown> | null): Rec
 }
 
 export function redactSensitiveText(input: string): string {
-  return redactCommandText(
-    input
-      .replace(JSON_SECRET_FIELD_TEXT_RE, `$1${REDACTED_EVENT_VALUE}$2`)
-      .replace(ESCAPED_JSON_SECRET_FIELD_TEXT_RE, `$1${REDACTED_EVENT_VALUE}$2`),
-    REDACTED_EVENT_VALUE,
-  );
+  return redactCommandText(input, REDACTED_EVENT_VALUE)
+    .replace(JSON_SECRET_FIELD_TEXT_RE, `$1${REDACTED_EVENT_VALUE}$2`)
+    .replace(ESCAPED_JSON_SECRET_FIELD_TEXT_RE, `$1${REDACTED_EVENT_VALUE}$2`)
+    .replace(TEXT_ENV_SECRET_ASSIGNMENT_RE, `$1${REDACTED_EVENT_VALUE}`)
+    .replace(TEXT_NAMED_SECRET_EQUALS_RE, `$1${REDACTED_EVENT_VALUE}`)
+    .replace(TEXT_CLEAR_SECRET_COLON_RE, `$1${REDACTED_EVENT_VALUE}`)
+    .replace(TEXT_AMBIGUOUS_SECRET_COLON_RE, `$1${REDACTED_EVENT_VALUE}`)
+    .replace(TEXT_BARE_BEARER_CREDENTIAL_RE, `$1${REDACTED_EVENT_VALUE}`)
+    .replace(TEXT_URL_EMBEDDED_CREDENTIAL_RE, `$1${REDACTED_EVENT_VALUE}@`);
 }

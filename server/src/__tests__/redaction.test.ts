@@ -85,6 +85,48 @@ describe("redaction", () => {
     expect(result).not.toContain(jwt);
   });
 
+  it("redacts secret-looking environment assignments in issue-style prose", () => {
+    const result = redactSensitiveText("Investigation notes: PAPERCLIP_API_KEY: test-only-sensitive-value");
+
+    expect(result).toContain(REDACTED_EVENT_VALUE);
+    expect(result).not.toContain("test-only-sensitive-value");
+  });
+
+  it("preserves ordinary colon prose while redacting convincingly secret-shaped values", () => {
+    const ordinary = redactSensitiveText("Investigation notes: secret: follow up with the vendor");
+    const opaqueValue = "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6";
+    const secret = redactSensitiveText(`Investigation notes: secret: ${opaqueValue}`);
+
+    expect(ordinary).toBe("Investigation notes: secret: follow up with the vendor");
+    expect(secret).toContain(REDACTED_EVENT_VALUE);
+    expect(secret).not.toContain(opaqueValue);
+  });
+
+  it("redacts opaque bearer credentials without a header colon while preserving ordinary prose", () => {
+    const credential = "A1b2C3d4E5f6G7h8I9j0K1l2";
+    const redacted = redactSensitiveText(`Paste Bearer ${credential} into the request`);
+    const ordinary = redactSensitiveText("The bearer token flow is documented in the guide");
+
+    expect(redacted).toBe(`Paste Bearer ${REDACTED_EVENT_VALUE} into the request`);
+    expect(redacted).not.toContain(credential);
+    expect(ordinary).toBe("The bearer token flow is documented in the guide");
+  });
+
+  it("redacts URL userinfo credentials while preserving benign URLs", () => {
+    const credentialUrl = "https://build-user:TestOnlyPass123@example.test/hooks?mode=sync";
+    const usernameOnlyCredentialUrl = "https://ghp_TestOnlyOpaqueCredential123@example.test/hooks";
+    const redacted = redactSensitiveText(`Callback: ${credentialUrl}`);
+    const redactedUsernameOnly = redactSensitiveText(`Callback: ${usernameOnlyCredentialUrl}`);
+    const benign = "Read https://docs.example.test:8443/guides/auth?mode=public";
+
+    expect(redacted).toBe(`Callback: https://${REDACTED_EVENT_VALUE}@example.test/hooks?mode=sync`);
+    expect(redacted).not.toContain("build-user");
+    expect(redacted).not.toContain("TestOnlyPass123");
+    expect(redactedUsernameOnly).toBe(`Callback: https://${REDACTED_EVENT_VALUE}@example.test/hooks`);
+    expect(redactedUsernameOnly).not.toContain("ghp_TestOnlyOpaqueCredential123");
+    expect(redactSensitiveText(benign)).toBe(benign);
+  });
+
   it("redacts inline secrets from command metadata without hiding safe command text", () => {
     const input = {
       command: "custom-acp --token ghp_example_secret env OPENAI_API_KEY=sk-live-example custom-acp",
