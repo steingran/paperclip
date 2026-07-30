@@ -114,12 +114,16 @@ describe("redaction", () => {
 
   it("redacts URL userinfo credentials while preserving benign URLs", () => {
     const credentialUrl = "https://build-user:TestOnlyPass123@example.test/hooks?mode=sync";
+    const usernameOnlyCredentialUrl = "https://ghp_TestOnlyOpaqueCredential123@example.test/hooks";
     const redacted = redactSensitiveText(`Callback: ${credentialUrl}`);
+    const redactedUsernameOnly = redactSensitiveText(`Callback: ${usernameOnlyCredentialUrl}`);
     const benign = "Read https://docs.example.test:8443/guides/auth?mode=public";
 
     expect(redacted).toBe(`Callback: https://${REDACTED_EVENT_VALUE}@example.test/hooks?mode=sync`);
     expect(redacted).not.toContain("build-user");
     expect(redacted).not.toContain("TestOnlyPass123");
+    expect(redactedUsernameOnly).toBe(`Callback: https://${REDACTED_EVENT_VALUE}@example.test/hooks`);
+    expect(redactedUsernameOnly).not.toContain("ghp_TestOnlyOpaqueCredential123");
     expect(redactSensitiveText(benign)).toBe(benign);
   });
 

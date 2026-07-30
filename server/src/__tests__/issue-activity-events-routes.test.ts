@@ -270,12 +270,14 @@ describe("issue activity event routes", () => {
     const issue = makeIssue();
     const bearerCredential = "A1b2C3d4E5f6G7h8I9j0K1l2";
     const credentialUrl = "https://build-user:TestOnlyPass123@example.test/hooks";
+    const usernameOnlyCredentialUrl = "https://ghp_TestOnlyOpaqueCredential123@example.test/hooks";
     mockIssueService.getById.mockResolvedValue(issue);
     mockIssueService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
       ...issue,
       ...patch,
       title: "Updated Bearer ***REDACTED***",
-      description: "Updated callback https://***REDACTED***@example.test/hooks",
+      description:
+        "Updated callback https://***REDACTED***@example.test/hooks https://***REDACTED***@example.test/hooks",
       updatedAt: new Date(),
     }));
 
@@ -283,7 +285,7 @@ describe("issue activity event routes", () => {
       .patch(`/api/issues/${issue.id}`)
       .send({
         title: `Updated Bearer ${bearerCredential}`,
-        description: `Updated callback ${credentialUrl}`,
+        description: `Updated callback ${credentialUrl} ${usernameOnlyCredentialUrl}`,
       });
 
     expect(res.status).toBe(200);
@@ -294,7 +296,8 @@ describe("issue activity event routes", () => {
           action: "issue.updated",
           details: expect.objectContaining({
             title: "Updated Bearer ***REDACTED***",
-            description: "Updated callback https://***REDACTED***@example.test/hooks",
+            description:
+              "Updated callback https://***REDACTED***@example.test/hooks https://***REDACTED***@example.test/hooks",
           }),
         }),
       );
@@ -302,6 +305,7 @@ describe("issue activity event routes", () => {
     expect(JSON.stringify(mockLogActivity.mock.calls)).not.toContain(bearerCredential);
     expect(JSON.stringify(mockLogActivity.mock.calls)).not.toContain("build-user");
     expect(JSON.stringify(mockLogActivity.mock.calls)).not.toContain("TestOnlyPass123");
+    expect(JSON.stringify(mockLogActivity.mock.calls)).not.toContain("ghp_TestOnlyOpaqueCredential123");
   });
 
   it("logs explicit reviewer and approver activity when execution policy participants change", async () => {

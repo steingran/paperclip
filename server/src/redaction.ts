@@ -30,10 +30,11 @@ const TEXT_AMBIGUOUS_SECRET_COLON_RE =
 // a known provider shape, JWT, or 24+ character URL-safe/base64-like value.
 const TEXT_BARE_BEARER_CREDENTIAL_RE =
   /(\bbearer\s+)(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]{8,})?|[A-Za-z0-9+/=_-]{24,})(?=$|[^A-Za-z0-9+/=_-])/gi;
-// Userinfo is credentials only when it includes a password (`user:password@`).
-// This deliberately leaves normal URLs, ports, and username-only URLs intact.
+// URL userinfo is treated as sensitive even when it has no password. A token
+// can be supplied as the username component (`https://token@example.test`).
+// Normal URLs, ports, and URLs without an `@` remain untouched.
 const TEXT_URL_EMBEDDED_CREDENTIAL_RE =
-  /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/?#:@]+:[^\s/?#@]+@/gi;
+  /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/?#@]+@/gi;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;

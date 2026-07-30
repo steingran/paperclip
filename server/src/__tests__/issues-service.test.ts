@@ -501,6 +501,7 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
     const inputValue = "test-only-sensitive-value";
     const bearerCredential = "A1b2C3d4E5f6G7h8I9j0K1l2";
     const credentialUrl = "https://build-user:TestOnlyPass123@example.test/hooks";
+    const usernameOnlyCredentialUrl = "https://ghp_TestOnlyOpaqueCredential123@example.test/hooks";
 
     await db.insert(companies).values({
       id: companyId,
@@ -517,7 +518,11 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
       title: `Update AUTH_TOKEN=${inputValue}`,
       description: `Updated password: ${inputValue}`,
     });
-    const comment = await svc.addComment(created.id, `Comment Bearer ${bearerCredential} ${credentialUrl}`, {});
+    const comment = await svc.addComment(
+      created.id,
+      `Comment Bearer ${bearerCredential} ${credentialUrl} ${usernameOnlyCredentialUrl}`,
+      {},
+    );
     const [storedIssue] = await db.select().from(issues).where(eq(issues.id, created.id));
     const [storedComment] = await db.select().from(issueComments).where(eq(issueComments.id, comment.id));
 
@@ -525,11 +530,14 @@ describeEmbeddedPostgres("issueService.list participantAgentId", () => {
       title: "Update AUTH_TOKEN=***REDACTED***",
       description: "Updated password: ***REDACTED***",
     }));
-    expect(storedComment?.body).toBe("Comment Bearer ***REDACTED*** https://***REDACTED***@example.test/hooks");
+    expect(storedComment?.body).toBe(
+      "Comment Bearer ***REDACTED*** https://***REDACTED***@example.test/hooks https://***REDACTED***@example.test/hooks",
+    );
     expect(JSON.stringify({ storedIssue, storedComment })).not.toContain(inputValue);
     expect(JSON.stringify({ storedIssue, storedComment })).not.toContain(bearerCredential);
     expect(JSON.stringify({ storedIssue, storedComment })).not.toContain("build-user");
     expect(JSON.stringify({ storedIssue, storedComment })).not.toContain("TestOnlyPass123");
+    expect(JSON.stringify({ storedIssue, storedComment })).not.toContain("ghp_TestOnlyOpaqueCredential123");
   });
 
   it("filters issues by execution workspace id", async () => {
