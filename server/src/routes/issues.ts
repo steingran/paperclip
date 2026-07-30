@@ -85,6 +85,7 @@ import {
   redactIssueMonitorExternalRef,
   setIssueExecutionPolicyMonitorScheduledBy,
 } from "../services/issue-execution-policy.js";
+import { redactSensitiveText } from "../redaction.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 
 const MAX_ISSUE_COMMENT_LIMIT = 500;
@@ -166,6 +167,25 @@ function summarizeIssueReferenceActivityDetails(input:
     ...(input.removedReferencedIssues.length > 0 ? { removedReferencedIssues: input.removedReferencedIssues } : {}),
     ...(input.currentReferencedIssues.length > 0 ? { currentReferencedIssues: input.currentReferencedIssues } : {}),
   };
+}
+
+function redactIssueTextActivityFields(
+  fields: Record<string, unknown>,
+  persistedIssue: { title: string; description: string | null },
+) {
+  const redacted = { ...fields };
+  // Use the persisted values for changed text. This keeps the activity record
+  // on the same redaction boundary as indexing, live events, and plugins.
+  if (typeof fields.title === "string") redacted.title = persistedIssue.title;
+  if (typeof fields.description === "string") redacted.description = persistedIssue.description;
+  return redacted;
+}
+
+function redactPreviousIssueTextActivityFields(fields: Record<string, unknown>) {
+  const redacted = { ...fields };
+  if (typeof fields.title === "string") redacted.title = redactSensitiveText(fields.title);
+  if (typeof fields.description === "string") redacted.description = redactSensitiveText(fields.description);
+  return redacted;
 }
 
 function monitorPoliciesEqual(left: NormalizedExecutionPolicy | null, right: NormalizedExecutionPolicy | null) {
@@ -1317,14 +1337,19 @@ export function issueRoutes(
     }
 
     const actor = getActorInfo(req);
+    const redactedDocumentInput = {
+      title: req.body.title == null ? null : redactSensitiveText(req.body.title),
+      body: redactSensitiveText(req.body.body),
+      changeSummary: req.body.changeSummary == null ? null : redactSensitiveText(req.body.changeSummary),
+    };
     const referenceSummaryBefore = await issueReferencesSvc.listIssueReferenceSummary(issue.id);
     const result = await documentsSvc.upsertIssueDocument({
       issueId: issue.id,
       key: keyParsed.data,
-      title: req.body.title ?? null,
+      title: redactedDocumentInput.title,
       format: req.body.format,
-      body: req.body.body,
-      changeSummary: req.body.changeSummary ?? null,
+      body: redactedDocumentInput.body,
+      changeSummary: redactedDocumentInput.changeSummary,
       baseRevisionId: req.body.baseRevisionId ?? null,
       createdByAgentId: actor.agentId ?? null,
       createdByUserId: actor.actorType === "user" ? actor.actorId : null,
@@ -2395,6 +2420,8 @@ export function issueRoutes(
     }
 
     const hasFieldChanges = Object.keys(previous).length > 0;
+    const activityUpdateFields = redactIssueTextActivityFields(updateFields, issue);
+    const activityPrevious = redactPreviousIssueTextActivityFields(previous);
     const reopened =
       commentBody &&
       effectiveMoveToTodoRequested &&
@@ -2412,14 +2439,14 @@ export function issueRoutes(
       entityType: "issue",
       entityId: issue.id,
       details: {
-        ...updateFields,
+        ...activityUpdateFields,
         identifier: issue.identifier,
         ...(commentBody ? { source: "comment" } : {}),
         ...(resumeRequested === true ? { resumeIntent: true, followUpRequested: true } : {}),
         ...(reopened ? { reopened: true, reopenedFrom: reopenFromStatus } : {}),
         ...(interruptedRunId ? { interruptedRunId } : {}),
         ...(cancelledStatusRunId ? { cancelledStatusRunId } : {}),
-        _previous: hasFieldChanges ? previous : undefined,
+        _previous: hasFieldChanges ? activityPrevious : undefined,
         ...summarizeIssueReferenceActivityDetails(
           updateReferenceDiff
             ? {

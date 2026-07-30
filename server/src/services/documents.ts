@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import { documentRevisions, documents, issueDocuments, issues } from "@paperclipai/db";
 import { isSystemIssueDocumentKey, issueDocumentKeySchema } from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
+import { redactSensitiveText } from "../redaction.js";
 
 function normalizeDocumentKey(key: string) {
   const normalized = key.trim().toLowerCase();
@@ -15,6 +16,18 @@ function normalizeDocumentKey(key: string) {
 
 function isUniqueViolation(error: unknown): boolean {
   return !!error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "23505";
+}
+
+function redactIssueDocumentText(input: {
+  title?: string | null;
+  body: string;
+  changeSummary?: string | null;
+}) {
+  return {
+    title: input.title == null ? null : redactSensitiveText(input.title),
+    body: redactSensitiveText(input.body),
+    changeSummary: input.changeSummary == null ? null : redactSensitiveText(input.changeSummary),
+  };
 }
 
 export function extractLegacyPlanBody(description: string | null | undefined) {
@@ -50,9 +63,9 @@ function mapIssueDocumentRow(
     companyId: row.companyId,
     issueId: row.issueId,
     key: row.key,
-    title: row.title,
+    title: row.title == null ? null : redactSensitiveText(row.title),
     format: row.format,
-    ...(includeBody ? { body: row.latestBody } : {}),
+    ...(includeBody ? { body: redactSensitiveText(row.latestBody) } : {}),
     latestRevisionId: row.latestRevisionId ?? null,
     latestRevisionNumber: row.latestRevisionNumber,
     createdByAgentId: row.createdByAgentId,
@@ -115,7 +128,7 @@ export function documentService(db: Db) {
         legacyPlanDocument: legacyPlanBody
           ? {
               key: "plan" as const,
-              body: legacyPlanBody,
+              body: redactSensitiveText(legacyPlanBody),
               source: "issue_description" as const,
             }
           : null,
@@ -165,7 +178,13 @@ export function documentService(db: Db) {
         .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
         .innerJoin(documentRevisions, eq(documentRevisions.documentId, documents.id))
         .where(and(eq(issueDocuments.issueId, issueId), eq(issueDocuments.key, key)))
-        .orderBy(desc(documentRevisions.revisionNumber));
+        .orderBy(desc(documentRevisions.revisionNumber))
+        .then((rows) => rows.map((row) => ({
+          ...row,
+          title: row.title == null ? null : redactSensitiveText(row.title),
+          body: redactSensitiveText(row.body),
+          changeSummary: row.changeSummary == null ? null : redactSensitiveText(row.changeSummary),
+        })));
     },
 
     upsertIssueDocument: async (input: {
@@ -181,6 +200,10 @@ export function documentService(db: Db) {
       createdByRunId?: string | null;
     }) => {
       const key = normalizeDocumentKey(input.key);
+      // Documents are exposed through activity, plugins, search/reference indexing,
+      // and heartbeat payloads. Redact before any revision or current-document row
+      // is written so every downstream surface receives the safe representation.
+      const redacted = redactIssueDocumentText(input);
       const issue = await db
         .select({ id: issues.id, companyId: issues.companyId })
         .from(issues)
@@ -233,10 +256,10 @@ export function documentService(db: Db) {
                 companyId: issue.companyId,
                 documentId: existing.id,
                 revisionNumber: nextRevisionNumber,
-                title: input.title ?? null,
+                title: redacted.title,
                 format: input.format,
-                body: input.body,
-                changeSummary: input.changeSummary ?? null,
+                body: redacted.body,
+                changeSummary: redacted.changeSummary,
                 createdByAgentId: input.createdByAgentId ?? null,
                 createdByUserId: input.createdByUserId ?? null,
                 createdByRunId: input.createdByRunId ?? null,
@@ -247,9 +270,9 @@ export function documentService(db: Db) {
             await tx
               .update(documents)
               .set({
-                title: input.title ?? null,
+                title: redacted.title,
                 format: input.format,
-                latestBody: input.body,
+                latestBody: redacted.body,
                 latestRevisionId: revision.id,
                 latestRevisionNumber: nextRevisionNumber,
                 updatedByAgentId: input.createdByAgentId ?? null,
@@ -267,9 +290,9 @@ export function documentService(db: Db) {
               created: false as const,
               document: {
                 ...existing,
-                title: input.title ?? null,
+                title: redacted.title,
                 format: input.format,
-                body: input.body,
+                body: redacted.body,
                 latestRevisionId: revision.id,
                 latestRevisionNumber: nextRevisionNumber,
                 updatedByAgentId: input.createdByAgentId ?? null,
@@ -287,9 +310,9 @@ export function documentService(db: Db) {
             .insert(documents)
             .values({
               companyId: issue.companyId,
-              title: input.title ?? null,
+              title: redacted.title,
               format: input.format,
-              latestBody: input.body,
+              latestBody: redacted.body,
               latestRevisionId: null,
               latestRevisionNumber: 1,
               createdByAgentId: input.createdByAgentId ?? null,
@@ -307,10 +330,10 @@ export function documentService(db: Db) {
               companyId: issue.companyId,
               documentId: document.id,
               revisionNumber: 1,
-              title: input.title ?? null,
+              title: redacted.title,
               format: input.format,
-              body: input.body,
-              changeSummary: input.changeSummary ?? null,
+              body: redacted.body,
+              changeSummary: redacted.changeSummary,
               createdByAgentId: input.createdByAgentId ?? null,
               createdByUserId: input.createdByUserId ?? null,
               createdByRunId: input.createdByRunId ?? null,
@@ -400,6 +423,7 @@ export function documentService(db: Db) {
           });
         }
 
+        const redacted = redactIssueDocumentText(revision);
         const now = new Date();
         const nextRevisionNumber = existing.latestRevisionNumber + 1;
         const [restoredRevision] = await tx
@@ -408,9 +432,9 @@ export function documentService(db: Db) {
             companyId: existing.companyId,
             documentId: existing.id,
             revisionNumber: nextRevisionNumber,
-            title: revision.title ?? null,
+            title: redacted.title,
             format: revision.format,
-            body: revision.body,
+            body: redacted.body,
             changeSummary: `Restored from revision ${revision.revisionNumber}`,
             createdByAgentId: input.createdByAgentId ?? null,
             createdByUserId: input.createdByUserId ?? null,
@@ -421,9 +445,9 @@ export function documentService(db: Db) {
         await tx
           .update(documents)
           .set({
-            title: revision.title ?? null,
+            title: redacted.title,
             format: revision.format,
-            latestBody: revision.body,
+            latestBody: redacted.body,
             latestRevisionId: restoredRevision.id,
             latestRevisionNumber: nextRevisionNumber,
             updatedByAgentId: input.createdByAgentId ?? null,
@@ -442,9 +466,9 @@ export function documentService(db: Db) {
           restoredFromRevisionNumber: revision.revisionNumber,
           document: {
             ...existing,
-            title: revision.title ?? null,
+            title: redacted.title,
             format: revision.format,
-            body: revision.body,
+            body: redacted.body,
             latestRevisionId: restoredRevision.id,
             latestRevisionNumber: nextRevisionNumber,
             updatedByAgentId: input.createdByAgentId ?? null,
@@ -470,9 +494,17 @@ export function documentService(db: Db) {
         await tx.delete(issueDocuments).where(eq(issueDocuments.documentId, existing.id));
         await tx.delete(documents).where(eq(documents.id, existing.id));
 
+        // This result is used to populate the deletion activity record after
+        // the transaction. Legacy rows may predate persistence redaction, so
+        // never let their raw title cross that activity boundary.
+        const redacted = redactIssueDocumentText({
+          title: existing.title,
+          body: existing.latestBody,
+        });
         return {
           ...existing,
-          body: existing.latestBody,
+          title: redacted.title,
+          body: redacted.body,
           latestRevisionId: existing.latestRevisionId ?? null,
         };
       });
