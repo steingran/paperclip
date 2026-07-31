@@ -2,13 +2,15 @@
 
 Use this reference when an issue has an isolated execution workspace and you need to inspect or run that workspace's services, especially for QA/browser verification.
 
+First normalize `PAPERCLIP_API_URL` as specified in the Paperclip skill, then use `$PAPERCLIP_API_BASE` in every request below.
+
 ## Discover the Workspace
 
 Start from the issue, not from memory:
 
 ```sh
 curl -sS -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
-  "$PAPERCLIP_API_URL/api/issues/$PAPERCLIP_TASK_ID/heartbeat-context"
+  "$PAPERCLIP_API_BASE/api/issues/$PAPERCLIP_TASK_ID/heartbeat-context"
 ```
 
 Read `currentExecutionWorkspace`:
@@ -30,7 +32,7 @@ curl -sS -X POST \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID" \
   -H "Content-Type: application/json" \
-  "$PAPERCLIP_API_URL/api/execution-workspaces/<workspace-id>/runtime-services/start" \
+  "$PAPERCLIP_API_BASE/api/execution-workspaces/<workspace-id>/runtime-services/start" \
   -d '{}'
 
 # Restart all configured services.
@@ -38,7 +40,7 @@ curl -sS -X POST \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID" \
   -H "Content-Type: application/json" \
-  "$PAPERCLIP_API_URL/api/execution-workspaces/<workspace-id>/runtime-services/restart" \
+  "$PAPERCLIP_API_BASE/api/execution-workspaces/<workspace-id>/runtime-services/restart" \
   -d '{}'
 
 # Stop all running services.
@@ -46,7 +48,7 @@ curl -sS -X POST \
   -H "Authorization: Bearer $PAPERCLIP_API_KEY" \
   -H "X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID" \
   -H "Content-Type: application/json" \
-  "$PAPERCLIP_API_URL/api/execution-workspaces/<workspace-id>/runtime-services/stop" \
+  "$PAPERCLIP_API_BASE/api/execution-workspaces/<workspace-id>/runtime-services/stop" \
   -d '{}'
 ```
 
