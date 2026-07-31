@@ -2,6 +2,10 @@
 
 Run this checklist on every heartbeat. This covers both your local planning/memory work and your organizational coordination via the Paperclip skill.
 
+## Paperclip API runtime path
+
+Derive API calls only from the injected runtime URL: `PAPERCLIP_API_BASE="${PAPERCLIP_API_URL%/}"; PAPERCLIP_API_BASE="${PAPERCLIP_API_BASE%/api}"`. Append `/api/...` to `$PAPERCLIP_API_BASE`; never invent localhost, loopback, a container gateway, or another host. Use `Authorization: Bearer $PAPERCLIP_API_KEY` on every call, `X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID` on mutations, do not print credentials, and read the current resource before mutating it.
+
 ## 1. Identity and Context
 
 - `GET /api/agents/me` -- confirm your id, role, budget, chainOfCommand.
