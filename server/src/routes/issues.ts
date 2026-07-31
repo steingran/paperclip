@@ -4229,6 +4229,14 @@ export function issueRoutes(
       res.status(403).json({ error: "Agent authentication required" });
       return false;
     }
+    // A fresh task-watchdog run may resume a blocked/closed source owned by
+    // another agent inside its watched subtree. Reuse the same scope and
+    // fingerprint revalidation as ordinary source mutations; all lifecycle,
+    // blocker, pause-hold, and low-trust guards above still apply.
+    const watchdogScope = await resolveTaskWatchdogMutationScope(db, req.actor);
+    if (watchdogScope.kind !== "none") {
+      return assertTaskWatchdogIssueMutationAllowed(req, res, issue, { allowWatchdogIssue: false });
+    }
     if (!issue.assigneeAgentId) {
       res.status(409).json({
         error: "Issue follow-up requires an assigned agent",
@@ -4266,6 +4274,14 @@ export function issueRoutes(
     if (!actorAgentId) {
       res.status(403).json({ error: "Agent authentication required" });
       return false;
+    }
+    // A watchdog's recovery authority is deliberately as narrow as its source
+    // mutation grant: a current, scope-validated run may resolve or supersede
+    // an active recovery action for the watched subtree, but cannot use that
+    // action to escape the subtree or a stale stop fingerprint.
+    const watchdogScope = await resolveTaskWatchdogMutationScope(db, req.actor);
+    if (watchdogScope.kind !== "none") {
+      return assertTaskWatchdogIssueMutationAllowed(req, res, issue, { allowWatchdogIssue: false });
     }
     if (issue.assigneeAgentId === actorAgentId) return true;
     if (

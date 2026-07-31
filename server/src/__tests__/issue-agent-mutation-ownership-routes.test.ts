@@ -1822,6 +1822,78 @@ describe("agent issue mutation checkout ownership", () => {
       );
     });
 
+    it("lets a fresh watchdog resume a blocked source despite another agent's active recovery action", async () => {
+      denyBaseBoundary();
+      mockIssueService.getById.mockResolvedValue(makeIssue({ status: "blocked", assigneeAgentId: ownerAgentId }));
+      mockIssueRecoveryActionService.getActiveForIssue.mockResolvedValue({
+        id: recoveryActionId,
+        ownerType: "agent",
+        ownerAgentId,
+      });
+      mockAgentService.resolveByReference.mockResolvedValue({ ambiguous: false, agent: makeAgent(peerAgentId) });
+
+      const app = await createApp(watchdogActor(), createWatchdogDb());
+      const res = await request(app)
+        .patch(`/api/issues/${issueId}`)
+        .send({
+          status: "todo",
+          assigneeAgentId: peerAgentId,
+          resume: true,
+          comment: "Watchdog restored the blocked source.",
+        });
+
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(mockIssueService.update).toHaveBeenCalledWith(
+        issueId,
+        expect.objectContaining({ status: "todo", assigneeAgentId: peerAgentId }),
+      );
+      expect(mockIssueRecoveryActionService.resolveActiveForIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionId: recoveryActionId,
+          status: "cancelled",
+          outcome: "cancelled",
+        }),
+      );
+    });
+
+    it("lets a fresh watchdog directly resolve an active recovery action in its watched subtree", async () => {
+      denyBaseBoundary();
+      mockIssueService.getById.mockResolvedValue(makeIssue({ status: "blocked", assigneeAgentId: ownerAgentId }));
+      mockIssueRecoveryActionService.getActiveForIssue.mockResolvedValue({
+        id: recoveryActionId,
+        ownerType: "agent",
+        ownerAgentId,
+      });
+
+      const app = await createApp(watchdogActor(), createWatchdogDb());
+      const res = await request(app)
+        .post(`/api/issues/${issueId}/recovery-actions/resolve`)
+        .send({ actionId: recoveryActionId, outcome: "restored", sourceIssueStatus: "todo" });
+
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(mockIssueRecoveryActionService.resolveActiveForIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionId: recoveryActionId,
+          outcome: "restored",
+          status: "resolved",
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("lets a fresh watchdog submit structured resume intent for another agent's blocked source", async () => {
+      denyBaseBoundary();
+      mockIssueService.getById.mockResolvedValue(makeIssue({ status: "blocked", assigneeAgentId: ownerAgentId }));
+
+      const app = await createApp(watchdogActor(), createWatchdogDb());
+      const res = await request(app)
+        .post(`/api/issues/${issueId}/comments`)
+        .send({ body: "Watchdog requests a retry.", resume: true });
+
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      expect(mockIssueService.update).toHaveBeenCalledWith(issueId, { status: "todo" });
+    });
+
     it.each([
       ["in_progress"],
       ["blocked"],
@@ -1875,6 +1947,30 @@ describe("agent issue mutation checkout ownership", () => {
       expect(res.status, JSON.stringify(res.body)).toBe(409);
       expect(res.body.error).toContain("Task-watchdog review is stale");
       expect(mockIssueService.update).not.toHaveBeenCalled();
+    });
+
+    it("rejects stale watchdog recovery resolution before it can clear an active action", async () => {
+      denyBaseBoundary();
+      mockIssueService.getById.mockResolvedValue(makeIssue({ status: "blocked", assigneeAgentId: ownerAgentId }));
+      mockIssueRecoveryActionService.getActiveForIssue.mockResolvedValue({
+        id: recoveryActionId,
+        ownerType: "agent",
+        ownerAgentId,
+      });
+      mockTaskWatchdogService.revalidateMutationScope.mockResolvedValueOnce({
+        allowed: false,
+        reason: "Task-watchdog review is stale because the watched subtree now has a live path.",
+        classification: { state: "live", liveIssueIds: [issueId] },
+      });
+
+      const app = await createApp(watchdogActor(), createWatchdogDb());
+      const res = await request(app)
+        .post(`/api/issues/${issueId}/recovery-actions/resolve`)
+        .send({ actionId: recoveryActionId, outcome: "restored", sourceIssueStatus: "todo" });
+
+      expect(res.status, JSON.stringify(res.body)).toBe(409);
+      expect(res.body.error).toContain("Task-watchdog review is stale");
+      expect(mockIssueRecoveryActionService.resolveActiveForIssue).not.toHaveBeenCalled();
     });
 
     it("suppresses watchdog follow-up creation when current source revalidation is live", async () => {
@@ -2038,6 +2134,29 @@ describe("agent issue mutation checkout ownership", () => {
       expect(res.status, JSON.stringify(res.body)).toBe(403);
       expect(res.body.error).toBe("Task-watchdog runs can only mutate the watched issue subtree.");
       expect(mockIssueService.update).not.toHaveBeenCalled();
+    });
+
+    it("still denies watchdog recovery resolution outside the watched subtree", async () => {
+      denyBaseBoundary();
+      mockIssueService.getById.mockResolvedValue(makeIssue({ status: "blocked", assigneeAgentId: ownerAgentId }));
+      mockIssueRecoveryActionService.getActiveForIssue.mockResolvedValue({
+        id: recoveryActionId,
+        ownerType: "agent",
+        ownerAgentId,
+      });
+      const outsideWatched = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeef";
+
+      const app = await createApp(
+        watchdogActor(),
+        createWatchdogDb({ watchedIssueId: outsideWatched, ancestryParentId: null }),
+      );
+      const res = await request(app)
+        .post(`/api/issues/${issueId}/recovery-actions/resolve`)
+        .send({ actionId: recoveryActionId, outcome: "restored", sourceIssueStatus: "todo" });
+
+      expect(res.status, JSON.stringify(res.body)).toBe(403);
+      expect(res.body.error).toBe("Task-watchdog runs can only mutate the watched issue subtree.");
+      expect(mockIssueRecoveryActionService.resolveActiveForIssue).not.toHaveBeenCalled();
     });
 
     it("still enforces normal assignment guards for watchdog reassignment", async () => {
