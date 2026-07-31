@@ -399,6 +399,8 @@ function buildWakeText(
     `Load PAPERCLIP_API_KEY from ${claimedApiKeyPath} (the token you saved after claim-api-key).`,
     "",
     `api_base=${apiBaseHint}`,
+    'Before constructing any Paperclip URL, derive PAPERCLIP_API_BASE from PAPERCLIP_API_URL by trimming one trailing slash and then one trailing /api: PAPERCLIP_API_BASE="${PAPERCLIP_API_URL%/}"; PAPERCLIP_API_BASE="${PAPERCLIP_API_BASE%/api}".',
+    'Append /api/... only to $PAPERCLIP_API_BASE. Never invent or substitute localhost, 127.0.0.1, container gateways, or another host; never print credentials; read the current resource before mutating it.',
     `task_id=${payload.taskId ?? ""}`,
     `issue_id=${payload.issueId ?? ""}`,
     `wake_reason=${payload.wakeReason ?? ""}`,
