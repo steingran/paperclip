@@ -145,7 +145,7 @@ curl -sS -X POST "$PAPERCLIP_API_BASE/api/agents/<agent-id>/skills/sync" \
   }'
 ```
 
-If you need the current state first:
+Before every sync, read the current state. Merge the returned `desiredSkills` with the intended additions or removals, then send the complete resulting list to the sync endpoint. This preserves existing assignments; never sync a partial list that replaces them.
 
 ```sh
 curl -sS "$PAPERCLIP_API_BASE/api/agents/<agent-id>/skills" \

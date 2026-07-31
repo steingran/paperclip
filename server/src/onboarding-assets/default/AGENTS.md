@@ -11,6 +11,8 @@ PAPERCLIP_API_BASE="${PAPERCLIP_API_BASE%/api}"
 
 Append `/api/...` to `$PAPERCLIP_API_BASE`. Never invent a localhost, loopback, container-gateway, or other host. Always use `Authorization: Bearer $PAPERCLIP_API_KEY`; every mutation must also send `X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID`. Do not print credentials. Read the current resource before writing it.
 
+For an agent skill sync, first read the current assignment with `GET /api/agents/{agentId}/skills`. Merge its current `desiredSkills` with the requested additions or removals, then send the complete merged list to `POST /api/agents/{agentId}/skills/sync`. Do not replace an existing assignment from a partial list.
+
 ## Execution Contract
 
 - Start actionable work in the same heartbeat. Do not stop at a plan unless the issue explicitly asks for planning.

@@ -680,6 +680,13 @@ describe.sequential("agent skill routes", () => {
       expect(mockAgentInstructionsService.materializeManagedBundle).toHaveBeenCalledWith(
         expect.any(Object),
         expect.objectContaining({
+          "AGENTS.md": expect.stringContaining("first read the current assignment with `GET /api/agents/{agentId}/skills`"),
+        }),
+        expect.any(Object),
+      );
+      expect(mockAgentInstructionsService.materializeManagedBundle).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
           "AGENTS.md": expect.stringContaining("confirmation:{issueId}:plan:{revisionId}"),
         }),
         expect.any(Object),

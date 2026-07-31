@@ -6,6 +6,8 @@ Run this checklist on every heartbeat. This covers both your local planning/memo
 
 Derive API calls only from the injected runtime URL: `PAPERCLIP_API_BASE="${PAPERCLIP_API_URL%/}"; PAPERCLIP_API_BASE="${PAPERCLIP_API_BASE%/api}"`. Append `/api/...` to `$PAPERCLIP_API_BASE`; never invent localhost, loopback, a container gateway, or another host. Use `Authorization: Bearer $PAPERCLIP_API_KEY` on every call, `X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID` on mutations, do not print credentials, and read the current resource before mutating it.
 
+Before any `POST /api/agents/{agentId}/skills/sync`, read `GET /api/agents/{agentId}/skills` and merge the current `desiredSkills` with the intended changes. Sync only the complete merged list; never overwrite existing assignments from a partial list.
+
 ## 1. Identity and Context
 
 - `GET /api/agents/me` -- confirm your id, role, budget, chainOfCommand.
