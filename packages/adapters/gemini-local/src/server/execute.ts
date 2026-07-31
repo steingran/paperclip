@@ -87,10 +87,12 @@ function renderApiAccessNote(env: Record<string, string>): string {
   return [
     "Paperclip API access note:",
     "Use run_shell_command with curl to make Paperclip API requests.",
+    "Derive PAPERCLIP_API_BASE from the runtime URL: PAPERCLIP_API_BASE=\"${PAPERCLIP_API_URL%/}\"; PAPERCLIP_API_BASE=\"${PAPERCLIP_API_BASE%/api}\". Append /api/... only to that base; never invent localhost, loopback, a container gateway, or another host.",
+    "Use Authorization: Bearer $PAPERCLIP_API_KEY on every request, X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID on mutations, never print credentials, and read the current resource before mutating it.",
     "GET example:",
-    `  run_shell_command({ command: "curl -s -H \\"Authorization: Bearer $PAPERCLIP_API_KEY\\" \\"$PAPERCLIP_API_URL/api/agents/me\\"" })`,
+    `  run_shell_command({ command: "PAPERCLIP_API_BASE=\\\"\${PAPERCLIP_API_URL%/}\\\"; PAPERCLIP_API_BASE=\\\"\${PAPERCLIP_API_BASE%/api}\\\"; curl -s -H \\"Authorization: Bearer $PAPERCLIP_API_KEY\\" \\"$PAPERCLIP_API_BASE/api/agents/me\\"" })`,
     "POST/PATCH example:",
-    `  run_shell_command({ command: "curl -s -X POST -H \\"Authorization: Bearer $PAPERCLIP_API_KEY\\" -H 'Content-Type: application/json' -H \\"X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID\\" -d '{...}' \\"$PAPERCLIP_API_URL/api/issues/{id}/checkout\\"" })`,
+    `  run_shell_command({ command: "PAPERCLIP_API_BASE=\\\"\${PAPERCLIP_API_URL%/}\\\"; PAPERCLIP_API_BASE=\\\"\${PAPERCLIP_API_BASE%/api}\\\"; curl -s -X POST -H \\"Authorization: Bearer $PAPERCLIP_API_KEY\\" -H 'Content-Type: application/json' -H \\"X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID\\" -d '{...}' \\"$PAPERCLIP_API_BASE/api/issues/{id}/checkout\\"" })`,
     "",
     "",
   ].join("\n");
