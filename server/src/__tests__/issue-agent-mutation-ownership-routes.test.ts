@@ -1929,6 +1929,34 @@ describe("agent issue mutation checkout ownership", () => {
       expect(mockIssueService.update).toHaveBeenCalledWith(issueId, expect.objectContaining({ status }));
     });
 
+    it("lets a watchdog run resume a blocked watched issue assigned to a different agent", async () => {
+      denyBaseBoundary();
+      mockIssueService.getById.mockResolvedValue(makeIssue({ status: "blocked", assigneeAgentId: ownerAgentId }));
+      mockIssueService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
+        ...makeIssue({ status: "blocked", assigneeAgentId: ownerAgentId }),
+        ...patch,
+      }));
+
+      const app = await createApp(watchdogActor(), createWatchdogDb());
+      const res = await request(app).patch(`/api/issues/${issueId}`).send({
+        status: "todo",
+        resume: true,
+        comment: "Resume with the verified build command and fix the compile error.",
+      });
+
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(mockIssueService.update).toHaveBeenCalledWith(
+        issueId,
+        expect.objectContaining({ status: "todo" }),
+      );
+      expect(mockIssueService.addComment).toHaveBeenCalledWith(
+        issueId,
+        "Resume with the verified build command and fix the compile error.",
+        expect.any(Object),
+        expect.any(Object),
+      );
+    });
+
     it("lets a watchdog run transition a watched issue to in_review with a live review path", async () => {
       denyBaseBoundary();
       mockIssueService.getById.mockResolvedValue(makeIssue({ status: "in_progress", assigneeAgentId: ownerAgentId }));
